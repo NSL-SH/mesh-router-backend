@@ -9,6 +9,7 @@ import { NSL_ROUTER_COLLECTION } from "../DataBaseDTO/DataBaseNSLRouter.js";
 import { getRedisClient, closeRedisClient } from "../redis/redisClient.js";
 import { acmeLabelFromFqdn, addAcmeTxt, getAcmeTxt, isAcmeTxtValue, isApexAcmeFqdn } from "../services/AcmeDns.js";
 import { dropUserZone, userZoneName } from "../services/DnsZones.js";
+import { forgetDomain } from "../services/DomainCache.js";
 import * as pdns from "../services/PowerDns.js";
 
 /**
@@ -85,6 +86,7 @@ describe("acme-dns API on the PowerDNS primary", function () {
 
   beforeEach(async () => {
     await ref(uid).update({ dns: { live: true } });
+    await forgetDomain(uid); // written past the backend: drop the resolve cache's copy
     await getRedisClient().del(`acme:txt:${uid}`, `acme:rate:${uid}`);
     await dropUserZone(uid);
   });
@@ -228,6 +230,15 @@ describe("acme-dns API on the PowerDNS primary", function () {
       const res = await request(app).get(`/resolve/v2/${uid}`);
       expect(res.body.dns).to.include({ delegated: true, live: true, force: "auto", answer: "gateway" });
       expect(res.body.dns.hostForce).to.deep.equal({ immich: "gateway" });
+    });
+
+    it("shows a force change at once, past the resolve cache", async () => {
+      expect((await request(app).get(`/resolve/v2/${uid}`)).body.dns).to.include({ force: "auto" });
+      await request(app).put(`/dns/v1/force/${uid}`).set("Authorization", `Bearer ${SERVICE_KEY};${uid}`)
+        .send({ force: "gateway" }).expect(200);
+      expect((await request(app).get(`/resolve/v2/${uid}`)).body.dns).to.include({ force: "gateway" });
+      await request(app).put(`/dns/v1/force/${uid}`).set("Authorization", `Bearer ${SERVICE_KEY};${uid}`)
+        .send({ force: "auto" }).expect(200);
     });
   });
 });

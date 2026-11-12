@@ -138,6 +138,7 @@ pnpm install
 | `GOOGLE_APPLICATION_CREDENTIALS` | Yes | Path to Firebase service account JSON |
 | `REDIS_URL` | Yes | Redis connection URL (e.g., `redis://localhost:6379`) |
 | `ROUTES_TTL_SECONDS` | No | TTL for route entries in seconds (default: 600) |
+| `DOMAIN_CACHE_TTL_SECONDS` | No | How long `GET /resolve/v2` keeps a label's Firestore lookup in Redis (`domain:<label>`), unknown labels included; the backend's own writes drop the entry at once, so the TTL only bounds edits made straight in Firestore (mesh-dashboard). `0` = off (default: 60) |
 | `SERVICE_API_KEY` | No | API key for service-to-service authentication |
 | `CA_CERT_PATH` | No | Path to CA certificate for PKI (default: `config/ca-cert.pem`) |
 | `CA_KEY_PATH` | No | Path to CA private key for PKI (default: `config/ca-key.pem`) |

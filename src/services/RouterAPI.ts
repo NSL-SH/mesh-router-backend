@@ -1,7 +1,7 @@
 import express, { Request } from "express";
 import {verifySignature} from "../library/KeyLib.js";
 import {authenticate, authenticateService, AuthUserRequest} from "./ExpressAuthenticateMiddleWare.js";
-import {checkDomainAvailability, deleteUserDomain, getUserDomain, updateUserDomain, checkOnlineStatus, getDomain, updateLastRouteRegistration, getAllUserDomains} from "./Domain.js";
+import {checkDomainAvailability, deleteUserDomain, getUserDomain, updateUserDomain, checkOnlineStatus, getDomain, getDomainCached, updateLastRouteRegistration, getAllUserDomains} from "./Domain.js";
 import {getServerDomain, getInactiveDomainDays, getDnsIpZone, getDnsGatewayIps, getTunnelProviders, getInboundMailConfig, getMailConfirmBase, getGatewayCertToken, getAcmeGatewayRateLimit} from "../configuration/config.js";
 import {registerRoutes, getRoutes, deleteRoutes, Route, getRoutesTTL, getActiveUserIds, getActivityTimestamp} from "./Routes.js";
 import {validateRoutes, normalizeRoute} from "./RouteValidator.js";
@@ -515,8 +515,8 @@ export function routerAPI(expressApp: express.Application, checkRoutes = validat
     try {
       const domain = req.params.domain.trim().toLowerCase();
 
-      // Get identity from Firestore
-      const domainData = await getDomain(domain);
+      // Identity from Firestore, through the Redis cache (DOMAIN_CACHE_TTL_SECONDS)
+      const domainData = await getDomainCached(domain);
 
       if (!domainData) {
         return res.status(404).json({ error: "Domain not found." });

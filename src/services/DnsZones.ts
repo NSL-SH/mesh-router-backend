@@ -23,6 +23,7 @@ import { boxGatewayIps, healthyGatewayIps, startGatewayHealth, stopGatewayHealth
 import * as pdns from "./PowerDns.js";
 import { parseZoneFile, ZoneFileError, ZoneRecord } from "./ZoneFile.js";
 import { queryNs } from "./DnsWire.js";
+import { forgetDomain } from "./DomainCache.js";
 
 /**
  * Backend side of the nameserver (mesh-router-nameserver docs/architecture.md §10):
@@ -1257,6 +1258,8 @@ export async function refreshDormantZones(force = false): Promise<number> {
  * live answer when in scope, else the dormant zone.
  */
 export async function resyncUser(uid: string, data: NSLRouterData | null): Promise<UserSyncResult | null> {
+  // every dns.* write lands here: /resolve/v2's `dns` block must not wait for the cache TTL
+  await forgetDomain(data?.domainName);
   if (data && isInScope(data)) {
     const user: ScopeUser = { uid, label: data.domainName, dns: data.dns };
     rememberUser(user, uid);

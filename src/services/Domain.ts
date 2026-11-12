@@ -1,6 +1,7 @@
 import {NSL_ROUTER_COLLECTION, NSLRouterData} from "../DataBaseDTO/DataBaseNSLRouter.js";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { dropUserZone, isUserZonesEnabled } from "./DnsZones.js";
+import { forgetDomain, readDomainCache, writeDomainCache } from "./DomainCache.js";
 
 //https://www.nic.ad.jp/timeline/en/20th/appendix1.html#:~:text=Format%20of%20a%20domain%20name,a%20maximum%20of%20253%20characters.
 
@@ -61,6 +62,19 @@ export async function getDomain(domain: string): Promise<{ uid: string, domain: 
       domain: querySnapshot.docs[0].data() as NSLRouterData
     };
   }
+}
+
+/**
+ * getDomain() through the Redis cache (DomainCache.ts), for GET /resolve/v2 only: up to
+ * DOMAIN_CACHE_TTL_SECONDS old, unknown labels included. Never use it to decide whether
+ * a name is free or whose it is — that is getDomain().
+ */
+export async function getDomainCached(domain: string): Promise<{ uid: string, domain: NSLRouterData } | null> {
+  const cached = await readDomainCache<{ uid: string, domain: NSLRouterData }>(domain);
+  if (cached) return cached.value;
+  const found = await getDomain(domain);
+  await writeDomainCache(domain, found);
+  return found;
 }
 
 // Labels the zone itself needs (nameservers, ip.<zone>, gateway, mail, ACME, …).
@@ -175,6 +189,8 @@ export async function updateUserDomain(
     await userDocRef.update({ "dns.live": FieldValue.delete() });
     releaseZone(previous);
   }
+  // the new name may be cached as unknown, the old one as this user's
+  await forgetDomain(domainName, previous);
 }
 
 /** Drop the zone of a label that is gone (fire and forget: never fails the caller). */
@@ -194,6 +210,7 @@ export async function deleteUserDomain(userId: string): Promise<void> {
 
   const label = (await getUserDomain(userId))?.domainName;
   await getFirestore().collection(NSL_ROUTER_COLLECTION).doc(userId).delete();
+  await forgetDomain(label);
   releaseZone(label);
 }
 
@@ -233,6 +250,7 @@ export async function clearDomainAssignment(userId: string): Promise<void> {
     publicKey: FieldValue.delete(),
     "dns.live": FieldValue.delete(),
   });
+  await forgetDomain(label);
   releaseZone(label);
 }
 

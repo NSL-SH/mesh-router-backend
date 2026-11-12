@@ -3,6 +3,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { NSL_ROUTER_COLLECTION, NSLRouterData } from "../DataBaseDTO/DataBaseNSLRouter.js";
 import { getRedisClient } from "../redis/redisClient.js";
 import { deleteRoutes, getRoutes, getRoutesTTL, Route } from "../services/Routes.js";
+import { forgetDomain } from "../services/DomainCache.js";
 
 // Test user prefix to identify test data (alphanumeric only for domain validation)
 export const TEST_USER_PREFIX = "testuser";
@@ -33,6 +34,7 @@ export async function createTestUser(userId: string): Promise<{ publicKey: strin
   };
 
   await getFirestore().collection(NSL_ROUTER_COLLECTION).doc(userId).set(userData);
+  await forgetDomain(userId); // written past the backend: /resolve/v2 must not keep an older lookup
 
   return {
     publicKey: keyPair.pub,
@@ -52,6 +54,7 @@ export async function signMessage(privateKey: string, message: string): Promise<
  */
 export async function deleteTestUser(userId: string): Promise<void> {
   await getFirestore().collection(NSL_ROUTER_COLLECTION).doc(userId).delete();
+  await forgetDomain(userId);
 }
 
 /**

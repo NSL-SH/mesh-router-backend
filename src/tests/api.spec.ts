@@ -20,6 +20,7 @@ import type { Application } from "express";
 import { getFirestore } from "firebase-admin/firestore";
 import { NSL_ROUTER_COLLECTION } from "../DataBaseDTO/DataBaseNSLRouter.js";
 import { updateUserDomain } from "../services/Domain.js";
+import { forgetDomain } from "../services/DomainCache.js";
 import { registerRoutes } from "../services/Routes.js";
 
 describe("Domain API", () => {
@@ -613,6 +614,35 @@ describe("Routes v2 API", () => {
 
       expect(response.body.routes).to.have.lengthOf(1);
       expect(response.body.routesTtl).to.be.a("number");
+    });
+
+    it("caches an unknown label (a 404 costs no second Firestore read)", async () => {
+      const label = generateTestUserId();
+      await request(app).get(`/resolve/v2/${label}`).expect(404);
+
+      // written straight to Firestore, past the backend (as mesh-dashboard does)
+      await getFirestore().collection(NSL_ROUTER_COLLECTION).doc(label)
+        .set({ domainName: label, serverDomain: TEST_SERVER_DOMAIN });
+      try {
+        await request(app).get(`/resolve/v2/${label}`).expect(404);
+        await forgetDomain(label);
+        const response = await request(app).get(`/resolve/v2/${label}`).expect(200);
+        expect(response.body.userId).to.equal(label);
+      } finally {
+        await deleteTestUser(label);
+      }
+    });
+
+    it("drops the cached lookups when a user takes a new name", async () => {
+      const renamed = generateTestUserId();
+      await request(app).get(`/resolve/v2/${testUserId}`).expect(200); // cached as this user's
+      await request(app).get(`/resolve/v2/${renamed}`).expect(404);    // cached as unknown
+
+      await updateUserDomain(testUserId, { domainName: renamed });
+
+      const response = await request(app).get(`/resolve/v2/${renamed}`).expect(200);
+      expect(response.body.userId).to.equal(testUserId);
+      await request(app).get(`/resolve/v2/${testUserId}`).expect(404);
     });
   });
 });

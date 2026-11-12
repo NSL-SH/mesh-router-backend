@@ -107,6 +107,27 @@ export function getRoutesTtl(): number {
 }
 
 /**
+ * Default lifetime of a /resolve/v2 name lookup in Redis, found or not.
+ */
+const DEFAULT_DOMAIN_CACHE_TTL_SECONDS = 60;
+
+/**
+ * How long /resolve/v2 keeps a label's Firestore lookup in Redis (DOMAIN_CACHE_TTL_SECONDS,
+ * 0 = off). The backend's own writes drop the entry at once; the TTL bounds what it cannot
+ * see (a mesh-dashboard edit straight in Firestore).
+ */
+export function getDomainCacheTtl(): number {
+  const envValue = process.env.DOMAIN_CACHE_TTL_SECONDS;
+  if (envValue !== undefined && envValue !== "") {
+    const parsed = parseInt(envValue, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return DEFAULT_DOMAIN_CACHE_TTL_SECONDS;
+}
+
+/**
  * Returns the retention for usage (DAU) daily buckets from environment or default.
  * Each usage:* daily key expires after this many seconds (rolling ~90 day window).
  * @returns Retention in seconds
