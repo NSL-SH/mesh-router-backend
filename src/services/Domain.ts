@@ -1,3 +1,4 @@
+import {uidFromOwnerId} from "./DomainOwner.js";
 import {NSL_ROUTER_COLLECTION, NSLRouterData} from "../DataBaseDTO/DataBaseNSLRouter.js";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { dropUserZone, isUserZonesEnabled } from "./DnsZones.js";
@@ -183,6 +184,14 @@ export async function updateUserDomain(
   }
 
   const userDocRef = getFirestore().collection(NSL_ROUTER_COLLECTION).doc(userId);
+  // A document created here records its owner's Firebase uid (DomainOwner.ts).
+  // Existing documents get it from `mesh-cli backfill-owner-uid`; ownerUid is
+  // never accepted from the request body.
+  delete (cleanedData as Partial<NSLRouterData>).ownerUid;
+  const existing = await userDocRef.get();
+  if (!existing.exists || !existing.get("ownerUid")) {
+    (cleanedData as Partial<NSLRouterData>).ownerUid = uidFromOwnerId(userId);
+  }
   await userDocRef.set(cleanedData, { merge: true });
   if (previous && previous.toLowerCase() !== domainName.toLowerCase()) {
     // the new name is not delegated yet: dormant until the live check says otherwise

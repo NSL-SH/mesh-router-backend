@@ -42,6 +42,11 @@ export interface NSLRouterData {
     domainName: string;
     publicKey: string;
 
+    // Firebase uid of the person who owns this document. The document id is an opaque
+    // owner id (`<uid>@yundera.com` for Yundera, one per box with multi-PCS), never a
+    // uid itself — read it through ownerUidOf() (services/DomainOwner.ts).
+    ownerUid?: string;
+
     // Target port where Caddy listens for incoming traffic (default: 443)
     targetPort?: number;
 

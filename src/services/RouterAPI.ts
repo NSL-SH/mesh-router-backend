@@ -1,6 +1,7 @@
 import express, { Request } from "express";
 import {verifySignature} from "../library/KeyLib.js";
 import {authenticate, authenticateService, AuthUserRequest} from "./ExpressAuthenticateMiddleWare.js";
+import {ownerUidOf} from "./DomainOwner.js";
 import {checkDomainAvailability, deleteUserDomain, getUserDomain, updateUserDomain, checkOnlineStatus, getDomain, getDomainCached, updateLastRouteRegistration, getAllUserDomains} from "./Domain.js";
 import {getServerDomain, getInactiveDomainDays, getDnsIpZone, getDnsGatewayIps, getTunnelProviders, getInboundMailConfig, getMailConfirmBase, getGatewayCertToken, getAcmeGatewayRateLimit} from "../configuration/config.js";
 import {registerRoutes, getRoutes, deleteRoutes, Route, getRoutesTTL, getActiveUserIds, getActivityTimestamp} from "./Routes.js";
@@ -220,10 +221,11 @@ export function routerAPI(expressApp: express.Application, checkRoutes = validat
         return res.status(401).json({ error: "Invalid signature." });
       }
 
-      // Firebase Auth is the authoritative source of the account email.
+      // Firebase Auth is the authoritative source of the account email. The
+      // userid is an owner id (`<uid>@yundera.com`), not a Firebase uid.
       let email: string | undefined;
       try {
-        const userRecord = await getAuth().getUser(userid);
+        const userRecord = await getAuth().getUser(ownerUidOf(userid, userData));
         email = userRecord.email;
       } catch (e) {
         return res.status(404).json({ error: "No Firebase user for this id." });

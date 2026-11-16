@@ -15,6 +15,7 @@ import { main as usageTop } from "../scripts/usage-top.js";
 import { main as usageSummary } from "../scripts/usage-summary.js";
 import { main as resetLink } from "../scripts/reset-link.js";
 import { main as dns } from "../scripts/dns.js";
+import { main as backfillOwnerUid } from "../scripts/backfill-owner-uid.js";
 
 type Command = {
   name: string;
@@ -47,6 +48,11 @@ const COMMANDS: Command[] = [
     name: "dns",
     description: "Nameserver: status|delegate|force|probe|sync <user>, allow (ip.<zone> allowlist). `mesh-cli dns` for usage.",
     run: dns,
+  },
+  {
+    name: "backfill-owner-uid",
+    description: "Write ownerUid (Firebase uid of the owner) on nsl-router docs without one; only when that Firebase user exists. Dry-run unless --apply. [--json].",
+    run: backfillOwnerUid,
   },
 ];
 
