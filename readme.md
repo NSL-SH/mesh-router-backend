@@ -36,7 +36,7 @@ Routes have a `type` field that determines how they're used:
 | Type | Used By | Example |
 |------|---------|---------|
 | `ip` | OpenResty Gateway | `{type: "ip", ip: "88.187.147.189", port: 443}` |
-| `domain` | CF Worker | `{type: "domain", domain: "88-187-147-189.sslip.io", port: 443}` |
+| `domain` | OpenResty Gateway (connects by its `ip`) | `{type: "domain", domain: "88-187-147-189.ip.nsl.sh", port: 443}` |
 
 #### Route Validation at Registration
 
@@ -109,7 +109,7 @@ curl -X POST http://localhost:8192/routes/{userid}/{signature} \
 curl http://localhost:8192/verify/{userid}/{signature}
 # Response: {"serverDomain":"nsl.sh","domainName":"myname"}
 
-# Get CA certificate (for Cloudflare COTS or client trust)
+# Get CA certificate (gateway → box hop, or client trust)
 curl http://localhost:8192/ca-cert
 # Response: -----BEGIN CERTIFICATE-----\n...(PEM format)
 
@@ -241,9 +241,9 @@ Routes are stored in Redis with automatic TTL expiration:
 | Type | Field | Used By | Example |
 |------|-------|---------|---------|
 | `ip` | `ip` | OpenResty Gateway | `88.187.147.189` |
-| `domain` | `domain` | CF Worker | `88-187-147-189.ip.nsl.sh` |
+| `domain` | `domain` | OpenResty Gateway (connects by `ip`) | `88-187-147-189.ip.nsl.sh` |
 
-CF Workers cannot fetch IP addresses directly (Cloudflare error 1003), so they reach the box by an IP-encoded name: `<app>-<ip>.<IP_ZONE>` through our nameserver, `<app>-<ip>.sslip.io` as the fallback. The worker builds both from the route's `ip`. The agent registers `<ip>.<IP_ZONE>` routes; `IP_ZONE` comes from this backend's `/version` (`ipZone`, set by `DNS_IP_ZONE`).
+Domain routes date from the Cloudflare Worker (retired 2026-11-16), which could not fetch IP addresses directly (Cloudflare error 1003) and reached the box by an IP-encoded name (`<app>-<ip>.<IP_ZONE>`, `<app>-<ip>.sslip.io` as the fallback). The gateways now read the route's `ip`; the IP-encoded name stays the route's identity and is what registration validates. The agent registers `<ip>.<IP_ZONE>` routes; `IP_ZONE` comes from this backend's `/version` (`ipZone`, set by `DNS_IP_ZONE`).
 
 ### Route Validation
 
@@ -253,7 +253,7 @@ Routes are validated at registration time:
 3. Only routes that pass validation are stored in Redis
 4. Agent receives feedback on which routes were accepted/rejected
 
-This ensures the CF Worker and Gateway only receive routes that are known to be reachable.
+This ensures the gateways only receive routes that are known to be reachable.
 
 ## Domain Activity Tracking & Cleanup
 
