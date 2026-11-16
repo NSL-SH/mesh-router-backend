@@ -13,7 +13,7 @@ Express.js API for Mesh Router domain management and route resolution. Handles u
 | POST | `/domain` | Firebase | Register or update domain |
 | DELETE | `/domain` | Firebase | Delete user's domain |
 | GET | `/verify/:userid/:sig` | Public | Verify domain ownership via Ed25519 signature |
-| GET | `/user/email/:userid/:sig` | Ed25519 Signature | The owner's account email, read live from Firebase Auth (box self-check `ensure-email-synced.sh`). `:userid` is the document's owner id (`<uid>@yundera.com`), not a Firebase uid: the uid is the document's `ownerUid`, else the id without `@yundera.com` (`src/services/DomainOwner.ts`). Backfill the field with `mesh-cli backfill-owner-uid` |
+| GET | `/user/email/:userid/:sig` | Ed25519 Signature | The owner's account email, read live from this backend's Firebase Auth (box self-check `ensure-email-synced.sh`). The account is the document's `ownerUid`, else the id itself (`src/services/DomainOwner.ts`). An operator's id (`<uid>@yundera.com`) is not an account here and answers 404; such boxes run `EMAIL_SYNC=false`. Backfill the field with `mesh-cli backfill-owner-uid` |
 
 ### Routes v2 API (Redis-backed)
 

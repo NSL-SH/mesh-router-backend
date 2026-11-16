@@ -5,6 +5,8 @@ import type { Request, Response, NextFunction } from "express";
 export interface AuthUserRequest extends Request {
   user?: {
     uid: string;
+    /** True when `uid` comes from a verified Firebase ID token of this backend's project (not the service key). */
+    firebase?: boolean;
   };
 }
 
@@ -63,7 +65,7 @@ export const authenticate = async (
 
     try {
       const decodedToken = await getAuth().verifyIdToken(idToken);
-      req.user = { uid: decodedToken.uid };
+      req.user = { uid: decodedToken.uid, firebase: true };
       next();
     } catch (firebaseError) {
       logAuthFailure(req, 'firebase_token_invalid', {

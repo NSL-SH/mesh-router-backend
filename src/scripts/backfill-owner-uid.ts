@@ -1,11 +1,12 @@
 /**
  * mesh-cli backfill-owner-uid [--apply] [--json]
  *
- * Write `ownerUid` (the owner's Firebase uid, services/DomainOwner.ts) on every
- * nsl-router document that has none. The value is the document id with
- * `@yundera.com` removed — exactly what `GET /user/email` derives while the
- * field is missing — and it is only written when Firebase Auth has that user,
- * so a stale or foreign document is reported, never labelled.
+ * Write `ownerUid` (the owning account in this backend's Firebase project,
+ * services/DomainOwner.ts) on every nsl-router document that has none. The
+ * value is the document id — what `GET /user/email` already uses while the
+ * field is missing — and it is only written when this project's Firebase Auth
+ * has that user. An operator's document (`<uid>@yundera.com`, an account of
+ * another project) is reported, never labelled.
  *
  * Dry-run by default; `--apply` writes. Idempotent: documents that already have
  * the field are skipped. Reads the whole collection once (one read per
@@ -15,7 +16,6 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { initializeFb } from "../firebase/firebaseIntegration.js";
 import { NSL_ROUTER_COLLECTION } from "../DataBaseDTO/DataBaseNSLRouter.js";
-import { uidFromOwnerId } from "../services/DomainOwner.js";
 import { hasFlag } from "../cli/format.js";
 
 export async function main(argv: string[]): Promise<void> {
@@ -28,7 +28,7 @@ export async function main(argv: string[]): Promise<void> {
 
   for (const doc of snap.docs) {
     if (doc.get("ownerUid")) { out.alreadySet++; continue; }
-    const uid = uidFromOwnerId(doc.id);
+    const uid = doc.id;
     try {
       await getAuth().getUser(uid);
     } catch {
@@ -47,7 +47,7 @@ export async function main(argv: string[]): Promise<void> {
     console.log(JSON.stringify(out, null, 2));
     return;
   }
-  for (const id of out.noFirebaseUser) console.log(`  SKIP ${id}: no Firebase user ${uidFromOwnerId(id)} — left unlabelled`);
+  for (const id of out.noFirebaseUser) console.log(`  SKIP ${id}: no Firebase user in this project — left unlabelled`);
   console.log(
     `\n${out.total} document(s): ${out.alreadySet} already set, ${out.toWrite.length} ${apply ? "written" : "to write"}, ` +
     `${out.noFirebaseUser.length} without a Firebase user` + (apply ? "" : " — dry-run, pass --apply to write"),

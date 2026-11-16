@@ -1,36 +1,25 @@
 /**
- * Who owns an `nsl-router/<ownerId>` document.
+ * Who owns an `nsl-router/<ownerId>` document, as an account of THIS backend.
  *
- * The document id is an **opaque owner id**: whatever the caller authenticated
- * as (the service key's `;<id>` part, or a Firebase uid). Yundera's
- * orchestrator and dashboard address it as `<uid>@yundera.com`, and a box signs
- * its routes over that same id (PROVIDER_STR). So the id is not a Firebase
- * uid, and must never be handed to `getAuth().getUser()` as one — doing that is
- * why `GET /user/email` answered "No Firebase user for this id." for every
- * Yundera box.
+ * The document id is an opaque owner id: whatever the caller authenticated as.
+ * Two kinds exist:
  *
- * `ownerUid` on the document is the Firebase uid of the person who owns it.
- * It is written when a document is created and backfilled on the rest
- * (`mesh-cli backfill-owner-uid`). With several boxes per user (one document
- * per box, ids like `<pcsId>@yundera.com`) it is the only link from a box back
- * to its person, which is why it is a field and not a parsing rule.
+ * - **A direct account** (mesh dashboard, open-source boxes): the id is a
+ *   Firebase uid in this backend's own project.
+ * - **An operator's id**, sent with the service key (Yundera's orchestrator:
+ *   `<uid>@yundera.com`). That person's account lives in the operator's own
+ *   Firebase project, never in this one, and the operator provides the email
+ *   to its boxes itself (they run `EMAIL_SYNC=false`).
  *
- * Until every document has it, a missing field falls back to the id with the
- * `@yundera.com` suffix removed, and an id without the suffix (a direct
- * Firebase caller) is its own uid.
+ * `ownerUid` is the uid of the owning account in this backend's project. It is
+ * written only when a Firebase user of this project creates or updates the
+ * document (never from a service-key call, never from the request body), and
+ * backfilled by `mesh-cli backfill-owner-uid`. An operator's document has none,
+ * and no lookup ever reads its id as one of our uids.
  */
 
-export const YUNDERA_OWNER_SUFFIX = "@yundera.com";
-
-/** The Firebase uid an owner id stands for, when the document does not say. */
-export function uidFromOwnerId(ownerId: string): string {
-  return ownerId.endsWith(YUNDERA_OWNER_SUFFIX)
-    ? ownerId.slice(0, -YUNDERA_OWNER_SUFFIX.length)
-    : ownerId;
-}
-
-/** The Firebase uid that owns a document: its `ownerUid`, else derived from its id. */
+/** The uid to look up in this backend's Firebase Auth: the stored `ownerUid`, else the id itself. */
 export function ownerUidOf(ownerId: string, data?: { ownerUid?: string } | null): string {
   const stored = data?.ownerUid;
-  return typeof stored === "string" && stored ? stored : uidFromOwnerId(ownerId);
+  return typeof stored === "string" && stored ? stored : ownerId;
 }

@@ -221,8 +221,9 @@ export function routerAPI(expressApp: express.Application, checkRoutes = validat
         return res.status(401).json({ error: "Invalid signature." });
       }
 
-      // Firebase Auth is the authoritative source of the account email. The
-      // userid is an owner id (`<uid>@yundera.com`), not a Firebase uid.
+      // Firebase Auth is the authoritative source of the account email. An
+      // operator's id (`<uid>@yundera.com`) is not one of our accounts and
+      // answers 404: the operator gives its boxes their email itself.
       let email: string | undefined;
       try {
         const userRecord = await getAuth().getUser(ownerUidOf(userid, userData));
@@ -280,7 +281,7 @@ export function routerAPI(expressApp: express.Application, checkRoutes = validat
         domainName,
         serverDomain,
         publicKey
-      });
+      }, { ownerUid: req.user.firebase ? req.user.uid : undefined });
 
       // Log domain assignment if a new domain name was set
       if (domainName) {
