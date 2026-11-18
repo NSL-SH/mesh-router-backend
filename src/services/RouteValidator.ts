@@ -4,12 +4,7 @@ import https from 'https';
 import { LookupFunction } from 'net';
 import { getDnsIpZone } from "../configuration/config.js";
 import { isPrivateIPv4 } from "./Probe.js";
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { getCACertificate, isCAInitialized } from "./CertificateAuthority.js";
 
 /**
  * Route validation timeout in milliseconds.
@@ -18,21 +13,23 @@ const __dirname = path.dirname(__filename);
 const VALIDATION_TIMEOUT = 5000;
 
 /**
- * Load mesh-router CA certificate for validating routes using our private CA.
+ * An https.Agent trusting the mesh CA this backend signs with, taken from the CA module
+ * when a route is validated. Read once at import, it missed a CA that initializeCA()
+ * generated after a loss: the backend then signed with the new CA but rejected every
+ * mesh-signed route until a second restart (drill 2026-11-18). Rebuilt when the CA changes.
  */
-const CA_CERT_PATH = process.env.CA_CERT_PATH || path.join(__dirname, '../../config/ca-cert.pem');
-let customCaAgent: https.Agent | undefined;
+let meshCa: { pem: string; agent: https.Agent } | undefined;
 
-try {
-  if (fs.existsSync(CA_CERT_PATH)) {
-    const caCert = fs.readFileSync(CA_CERT_PATH);
-    customCaAgent = new https.Agent({ ca: caCert });
-    console.log('[RouteValidator] Loaded custom CA cert from', CA_CERT_PATH);
-  } else {
-    console.warn('[RouteValidator] CA cert not found at', CA_CERT_PATH, '- HTTPS validation will use system CA only');
+function meshCaAgent(): https.Agent | undefined {
+  if (!isCAInitialized()) {
+    return undefined;
   }
-} catch (err) {
-  console.error('[RouteValidator] Failed to load CA cert:', err);
+  const pem = getCACertificate();
+  if (meshCa?.pem !== pem) {
+    meshCa = { pem, agent: new https.Agent({ ca: pem }) };
+    console.log('[RouteValidator] Validating mesh-signed routes against the current CA');
+  }
+  return meshCa.agent;
 }
 
 /**
@@ -96,8 +93,9 @@ function validateWithHttps(
 
   // Race system CA and custom CA — first valid wins
   const attempts = [makeRequest()];
-  if (customCaAgent) {
-    attempts.push(makeRequest(customCaAgent));
+  const meshAgent = meshCaAgent();
+  if (meshAgent) {
+    attempts.push(makeRequest(meshAgent));
   }
 
   return Promise.all(attempts).then((results) => {
