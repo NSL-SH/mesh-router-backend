@@ -597,6 +597,14 @@ describe("Routes v2 API", () => {
       expect(response.body.error).to.equal("Domain not found.");
     });
 
+    it("should return 404, not 500, for a name no user can hold", async () => {
+      const response = await request(app)
+        .get("/resolve/v2/files-wisera")
+        .expect(404);
+
+      expect(response.body.error).to.equal("Domain not found.");
+    });
+
     it("should handle case-insensitive domain lookup", async () => {
       const signature = await signMessage(testKeys.privateKey, testUserId);
       const domainName = testUserId;

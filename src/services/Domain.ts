@@ -70,6 +70,9 @@ export async function getDomain(domain: string): Promise<{ uid: string, domain: 
  * a name is free or whose it is — that is getDomain().
  */
 export async function getDomainCached(domain: string): Promise<{ uid: string, domain: NSLRouterData } | null> {
+  // A name no user can hold (`app-user`, scanner junk) is simply unknown: a 404 for the
+  // gateway, not a 500 it would take for a backend failure and ask again for every probe.
+  if (!validateDomainName(domain).isValid) return null;
   const cached = await readDomainCache<{ uid: string, domain: NSLRouterData }>(domain);
   if (cached) return cached.value;
   const found = await getDomain(domain);
