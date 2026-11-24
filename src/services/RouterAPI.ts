@@ -20,6 +20,7 @@ import {acmeLabelFromFqdn, addAcmeTxt, isAcmeTxtValue, removeAcmeTxt, takeAcmeUp
 import {verifyEmailCredential, sendUserEmail, EmailError, EmailSendRequest} from "./Email.js";
 import {MAX_INBOUND_BYTES, tokenMatches, readInboundForm, handleInbound, inboundDeps} from "./InboundMail.js";
 import {UserMailError, forwardView, setForward, clearForward, confirmForward, suppressionReason, confirmPage} from "./UserMail.js";
+import {recordReport, getSignedList, touchBox, takeReportSlot, MAX_GUARD_ALERTS_PER_REPORT} from "./Guard.js";
 import { getAuth } from "firebase-admin/auth";
 
 /**
@@ -137,8 +138,9 @@ export function routerAPI(expressApp: express.Application, checkRoutes = validat
       version: 2,
       minClientVersion: 2,
       serverDomain: process.env.SERVER_DOMAIN || 'unknown',
-      // Optional endpoints a client may probe before calling (usage = POST /usage/:userid/:sig).
-      capabilities: ['usage'],
+      // Optional endpoints a client may probe before calling (usage = POST /usage/:userid/:sig,
+      // guard = POST /guard/v1/reports and GET /guard/v1/list).
+      capabilities: ['usage', 'guard'],
       ...(ipZone ? { ipZone } : {}),
       ...(gatewayIps.length ? { gatewayIps } : {}),
       ...(tunnelProviders.length ? { tunnelProviders } : {}),
@@ -1438,6 +1440,80 @@ export function routerAPI(expressApp: express.Application, checkRoutes = validat
     } catch (error) {
       console.error("Error in PUT /hop/v1/proxy-protocol/:userid/:sig", error);
       return res.status(500).json({ error: error.toString() });
+    }
+  });
+
+  // ============================================================================
+  // Guard: fleet ban list (Guard.ts, pcs-edge-protection-study.md §4.3)
+  // ============================================================================
+
+  /** The box's credential (signature over the user id); undefined after answering 401. */
+  async function verifiedGuardBox(req: express.Request, res: express.Response, endpoint: string) {
+    const userid = String(req.params.userid);
+    const sig = String(req.params.sig);
+    const userData = await getUserDomain(userid);
+    let isValid = false;
+    try {
+      isValid = !!userData?.domainName && await verifySignature(userData.publicKey, sig, userid);
+    } catch {
+      isValid = false;
+    }
+    if (!isValid) {
+      logAuthFailure(req, 'invalid_signature', { userid, endpoint });
+      res.status(401).json({ error: "Invalid signature." });
+      return undefined;
+    }
+    return { userid, userData: userData! };
+  }
+
+  /**
+   * POST /guard/v1/reports/:userid/:sig
+   * The addresses the box's own CrowdSec scenarios banned. Body:
+   * { "alerts": [{ "ip": "203.0.113.7", "scenario": "crowdsecurity/ssh-bf", "at": "<ISO>" }] }
+   * At most MAX_GUARD_ALERTS_PER_REPORT alerts, MAX_GUARD_REPORTS_PER_HOUR requests an hour.
+   * Malformed alerts, non-Hub scenarios and protected addresses are dropped, not rejected.
+   * Responds 200 { accepted, counted, banned }; counted stays 0 until the box has
+   * GUARD_TRUST_DAYS of history. Credential: the box's signature over the user id.
+   */
+  router.post('/guard/v1/reports/:userid/:sig', async (req, res) => {
+    const alerts = req.body?.alerts;
+    try {
+      if (!Array.isArray(alerts)) {
+        return res.status(400).json({ error: "alerts array is required in request body." });
+      }
+      if (alerts.length > MAX_GUARD_ALERTS_PER_REPORT) {
+        return res.status(413).json({ error: `Too many alerts (max ${MAX_GUARD_ALERTS_PER_REPORT})` });
+      }
+      const box = await verifiedGuardBox(req, res, 'guard_report');
+      if (!box) return;
+      if (!await takeReportSlot(box.userid)) {
+        return res.status(429).json({ error: "Too many reports this hour." });
+      }
+      const result = await recordReport(box.userid, ownerUidOf(box.userid, box.userData), alerts);
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error("Error in POST /guard/v1/reports/:userid/:sig", error);
+      return res.status(500).json({ error: "Report failed." });
+    }
+  });
+
+  /**
+   * GET /guard/v1/list/:userid/:sig
+   * The fleet bans and the public lists, the same document for every box:
+   * { key, sig, payload } where payload is the JSON text of the list (Guard.ts GuardList)
+   * and sig its Ed25519 signature (base64) under key (base64), which the box pins.
+   * Credential: the box's signature over the user id.
+   */
+  router.get('/guard/v1/list/:userid/:sig', async (req, res) => {
+    try {
+      const box = await verifiedGuardBox(req, res, 'guard_list');
+      if (!box) return;
+      await touchBox(box.userid);
+      res.set('Cache-Control', 'no-store');
+      return res.status(200).json(await getSignedList());
+    } catch (error) {
+      console.error("Error in GET /guard/v1/list/:userid/:sig", error);
+      return res.status(500).json({ error: "List unavailable." });
     }
   });
 

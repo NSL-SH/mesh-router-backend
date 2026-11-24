@@ -9,6 +9,7 @@ import {runCleanup} from "./services/DomainCleanup.js";
 import {getCleanupCronSchedule} from "./configuration/config.js";
 import {startDnsReconciler} from "./services/DnsZones.js";
 import {startDnsHealthWatch} from "./services/DnsHealth.js";
+import {startGuardLists} from "./services/Guard.js";
 
 import 'dotenv/config';
 
@@ -39,6 +40,8 @@ expressApp.listen(port, async () => {
     startDnsReconciler();
     // nameserver health in the background: re-NOTIFY a secondary that fell behind
     startDnsHealthWatch();
+    // public IP lists merged into the boxes' fleet ban list (Guard.ts)
+    startGuardLists();
 
     console.log('Listening on ' + port);
 });

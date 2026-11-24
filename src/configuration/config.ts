@@ -400,3 +400,50 @@ export function getInboundMailConfig(): { token: string; aliases: Record<string,
 export function getMailConfirmBase(): string {
   return (process.env.MAIL_CONFIRM_BASE?.trim() || `https://${getServerDomain()}/router/api`).replace(/\/+$/, "");
 }
+
+/**
+ * Days a box must have been running its guard (first report or list fetch) before its
+ * reports count toward a fleet ban (GUARD_TRUST_DAYS, default 30). Guard.ts.
+ */
+export function getGuardTrustDays(): number {
+  const n = Number(process.env.GUARD_TRUST_DAYS ?? 30);
+  return Number.isFinite(n) && n >= 0 ? n : 30;
+}
+
+/**
+ * Distinct owners whose boxes must report an address within 24 h for a fleet ban
+ * (GUARD_QUORUM, default 3, never below 2: one owner alone can never ban fleet-wide).
+ */
+export function getGuardQuorum(): number {
+  const n = Math.floor(Number(process.env.GUARD_QUORUM ?? 3));
+  return Number.isFinite(n) && n >= 2 ? n : 3;
+}
+
+/** Every public list Guard.ts knows, in the order they are served. */
+export const GUARD_PUBLIC_LIST_NAMES = ["spamhaus-drop", "dshield", "feodo", "blocklist-de"];
+
+/**
+ * The public lists merged into the fleet list (GUARD_PUBLIC_LISTS, comma-separated names
+ * from GUARD_PUBLIC_LIST_NAMES; `none` for none). Unset = all of them. Unknown names are
+ * skipped with a warning.
+ */
+export function getGuardPublicLists(): string[] {
+  const raw = process.env.GUARD_PUBLIC_LISTS;
+  if (raw === undefined || raw.trim() === "") return [...GUARD_PUBLIC_LIST_NAMES];
+  if (raw.trim().toLowerCase() === "none") return [];
+  const out: string[] = [];
+  for (const name of commaList(raw)) {
+    if (GUARD_PUBLIC_LIST_NAMES.includes(name)) out.push(name);
+    else console.warn(`GUARD_PUBLIC_LISTS: skipping unknown list "${name}"`);
+  }
+  return out;
+}
+
+/**
+ * The Ed25519 secret key the fleet list is signed with (GUARD_SIGNING_KEY, base64 of
+ * libsodium's 64-byte secret key), or undefined: Guard.ts then generates one and keeps it
+ * in Redis. Boxes pin the public key the first time they see it.
+ */
+export function getGuardSigningKey(): string | undefined {
+  return process.env.GUARD_SIGNING_KEY?.trim() || undefined;
+}

@@ -16,6 +16,7 @@ import { main as usageSummary } from "../scripts/usage-summary.js";
 import { main as resetLink } from "../scripts/reset-link.js";
 import { main as dns } from "../scripts/dns.js";
 import { main as backfillOwnerUid } from "../scripts/backfill-owner-uid.js";
+import { main as guard } from "../scripts/guard.js";
 
 type Command = {
   name: string;
@@ -53,6 +54,11 @@ const COMMANDS: Command[] = [
     name: "backfill-owner-uid",
     description: "Write ownerUid (Firebase uid of the owner) on nsl-router docs without one; only when that Firebase user exists. Dry-run unless --apply. [--json].",
     run: backfillOwnerUid,
+  },
+  {
+    name: "guard",
+    description: "Fleet ban list: status|fleet|lift <addr>|refresh [--json].",
+    run: guard,
   },
 ];
 

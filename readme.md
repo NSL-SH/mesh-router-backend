@@ -30,6 +30,19 @@ Express.js API for Mesh Router domain management and route resolution. Handles u
 |--------|----------|------|-------------|
 | POST | `/usage/:userid/:sig` | Ed25519 Signature | A box reports `{date, apps[]}`: the apps someone opened on it that UTC day (today or yesterday). Sent by mesh-router-agent from the box's Caddy access log; opt-out on the box (`MESH_USAGE_REPORT=off`). Read with `mesh-cli usage summary\|app\|top` |
 
+### Guard (fleet ban list) API
+
+The fleet half of the boxes' IP bans (`src/services/Guard.ts`; design: yundera-root
+`doc/study/pcs-edge-protection-study.md` §4.3). Each box's `guard-sync` (mesh-router-guard) reports
+what its own CrowdSec banned and imports the list into it.
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/guard/v1/reports/:userid/:sig` | Ed25519 Signature | `{alerts: [{ip, scenario, at}]}`, at most 500, 30 requests an hour. An address reported by boxes of `GUARD_QUORUM` (3) distinct owners within 24 h gets a fleet ban: 24 h, doubling on each new quorum, capped at 7 days, lapsing once reports stop. Only `crowdsecurity/*` scenarios count, and only from boxes with `GUARD_TRUST_DAYS` (30) of history. Gateways, tunnel providers, the control plane, active boxes' IPs and private ranges are never banned |
+| GET | `/guard/v1/list/:userid/:sig` | Ed25519 Signature | `{key, sig, payload}`: the fleet bans plus the public lists (Spamhaus DROP, DShield, abuse.ch Feodo, blocklist.de, fetched hourly), `payload` signed with Ed25519 (base64). The box pins `key` the first time |
+
+Ops: `mesh-cli guard status|fleet|lift <addr>|refresh`.
+
 #### Route Types
 
 Routes have a `type` field that determines how they're used:
@@ -154,6 +167,10 @@ pnpm install
 | `INACTIVE_DOMAIN_DAYS` | No | Days of inactivity before domain cleanup (default: 30) |
 | `DOMAIN_LOG_PATH` | No | Path for domain event audit log (default: `logs/domain-events.log`) |
 | `CLEANUP_CRON_SCHEDULE` | No | Cron schedule for cleanup job (default: `0 3 * * *` - 3 AM daily) |
+| `GUARD_QUORUM` | No | Distinct owners whose boxes must report an address within 24 h for a fleet ban (default: 3, minimum 2) |
+| `GUARD_TRUST_DAYS` | No | Days of history (first report or list fetch) before a box's reports count (default: 30) |
+| `GUARD_PUBLIC_LISTS` | No | Public lists merged into the fleet list, comma-separated from `spamhaus-drop,dshield,feodo,blocklist-de`, or `none` (default: all) |
+| `GUARD_SIGNING_KEY` | No | base64 Ed25519 secret key (64 bytes) the list is signed with. Default: generated once and kept in Redis (`guard:signing-key`); boxes pin the public key, so keep it |
 
 **Service Account** (required):
 - Path: `./config/serviceAccount.json`

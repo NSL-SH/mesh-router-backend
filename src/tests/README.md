@@ -50,6 +50,16 @@ docker compose exec mesh-router-backend pnpm test
 |----------|-------|
 | `POST /usage/:userid/:sig` | Signed report recorded + idempotent, yesterday filed under yesterday, older/malformed dates 400, missing apps 400, bad signature 401, unknown user 404, malformed app names dropped, body uid ignored |
 
+### Guard (`guard.spec.ts`)
+
+Address/range parsing and the public-list parsers (no Redis), then the quorum, escalation,
+list building and signature against Redis only (no Firebase):
+
+```bash
+docker run -d --name guard-redis -p 127.0.0.1:16379:6379 redis:7-alpine
+pnpm build && REDIS_URL=redis://127.0.0.1:16379 npx mocha --exit dist/tests/guard.spec.js
+```
+
 ## Test Helpers
 
 ### User Management
