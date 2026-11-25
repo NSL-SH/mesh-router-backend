@@ -679,7 +679,7 @@ function rememberUser(user: ScopeUser | null, uid: string): void {
  */
 export async function onRegistration(uid: string, data: NSLRouterData | null): Promise<void> {
   if (!isUserZonesEnabled() || !data?.domainName) return;
-  await ensureUserZone(data.domainName);
+  if (await ensureUserZone(data.domainName)) await onNewUserZone(uid, data);
   if (await refreshLive(uid, data)) return; // changed: refreshLive synced the zone
   if (!isInScope(data)) return;
   const user: ScopeUser = { uid, label: data.domainName, dns: data.dns };
@@ -876,6 +876,35 @@ export async function refreshLive(uid: string, data: NSLRouterData, force = fals
   } finally {
     liveChecking.delete(label);
   }
+}
+
+/**
+ * Delays of the extra delegation checks after a user zone is created. The check the
+ * registration makes right away comes too early: the apex NS for the new zone has not
+ * reached the public nameservers yet, so a new box would otherwise stay dormant until
+ * its live flag is due again (LIVE_REFRESH_SECONDS), and with it its dot names, which no
+ * gateway holds a fallback certificate for until the user is live. The apex SOA caches
+ * the negative answer for 30 s, hence the first retry after a minute.
+ */
+export const NEW_ZONE_LIVE_CHECKS_MS = [60_000, 180_000];
+
+/**
+ * A user zone was just created: publish its NS in the apex now rather than at the next
+ * reconciler pass, then re-check the delegation on NEW_ZONE_LIVE_CHECKS_MS until it is
+ * live (fire and forget; a backend restart falls back to the normal refresh).
+ */
+async function onNewUserZone(uid: string, data: NSLRouterData): Promise<void> {
+  if (isApexZoneEnabled()) await syncApexLogged();
+  void (async () => {
+    for (const delay of NEW_ZONE_LIVE_CHECKS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delay).unref());
+      try {
+        if (await refreshLive(uid, data, true)) return;
+      } catch (e) {
+        console.warn(`[dns] ${data.domainName}: new zone live check failed: ${(e as Error).message ?? e}`);
+      }
+    }
+  })();
 }
 
 async function setLive(uid: string, data: NSLRouterData, live: boolean): Promise<void> {
