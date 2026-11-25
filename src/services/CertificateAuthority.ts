@@ -100,6 +100,22 @@ function generateRootCA(commonName: string, organization: string): { cert: strin
  * - Loads existing CA cert/key from files
  * - Auto-generates CA if files don't exist
  */
+/**
+ * A random 120-bit serial, positive and minimally DER-encoded.
+ *
+ * The first byte is forced into 0x01..0x7f: positive (high bit clear) with no
+ * leading zero. The old '00' + 15 random bytes relied on forge dropping the
+ * '00', but forge drops only one zero byte — when the first random byte was
+ * also 0x00 (1 in 256) the serial kept a redundant leading zero, and Go's
+ * x509 (Caddy) refuses the certificate: "x509: malformed serial number".
+ * That failed demostaging1's create on 2026-11-24.
+ */
+export function randomSerial(): string {
+  const bytes = forge.random.getBytesSync(15);
+  const first = (bytes.charCodeAt(0) & 0x7f) || 0x01;
+  return forge.util.bytesToHex(String.fromCharCode(first) + bytes.slice(1));
+}
+
 export async function initializeCA(): Promise<void> {
   const caCertPath = CA_CERT_PATH;
   const caKeyPath = CA_KEY_PATH;
@@ -201,10 +217,7 @@ export async function signCSR(
   const cert = forge.pki.createCertificate();
   cert.publicKey = csr.publicKey as forge.pki.PublicKey;
 
-  // Generate unique serial number (must be positive, so prepend '00' to ensure high bit is clear)
-  const serialBytes = forge.random.getBytesSync(15);
-  const serial = '00' + forge.util.bytesToHex(serialBytes);
-  cert.serialNumber = serial;
+  cert.serialNumber = randomSerial();
 
   // Set validity period
   const now = new Date();
@@ -287,7 +300,7 @@ export async function signCSR(
   const certPem = forge.pki.certificateToPem(cert);
 
   console.log(`[CA] Certificate issued for userId: ${userId}`);
-  console.log(`[CA]   Serial: ${serial.substring(0, 16)}...`);
+  console.log(`[CA]   Serial: ${cert.serialNumber.substring(0, 16)}...`);
   console.log(`[CA]   Expires: ${expiresAt.toISOString()}`);
 
   return {
@@ -326,7 +339,7 @@ export async function signGatewayCSR(csrPem: string, ip: string, name: string): 
 
   const cert = forge.pki.createCertificate();
   cert.publicKey = csr.publicKey as forge.pki.PublicKey;
-  cert.serialNumber = '00' + forge.util.bytesToHex(forge.random.getBytesSync(15));
+  cert.serialNumber = randomSerial();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + GATEWAY_CERT_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
   cert.validity.notBefore = now;
